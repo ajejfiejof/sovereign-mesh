@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SOVEREIGN MESH // P2P OVERLAY IMAGEBOARD</title>
+    <style>
+        :root {
+            --bg: #090d16;
+            --panel: #111726;
+            --card: #161e31;
+            --border: #222d46;
+            --cyan: #38bdf8;
+            --green: #34d399;
+            --amber: #fbbf24;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+        }
+        body {
+            font-family: monospace, monospace;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 24px;
+        }
+        header {
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 { margin: 0; color: var(--cyan); font-size: 20px; letter-spacing: 1px; }
+        .meta-strip { font-size: 12px; color: var(--muted); margin-top: 4px; }
+        .boards-nav { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+        .board-btn {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            padding: 6px 14px;
+            text-decoration: none;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .board-btn.active, .board-btn:hover {
+            border-color: var(--cyan);
+            color: var(--cyan);
+            background: var(--card);
+        }
+        .form-box {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: 6px;
+            margin-bottom: 24px;
+            max-width: 720px;
+        }
+        input, textarea {
+            width: 100%;
+            box-sizing: border-box;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px;
+            font-family: inherit;
+            margin-bottom: 12px;
+            border-radius: 4px;
+        }
+        input:focus, textarea:focus { border-color: var(--cyan); outline: none; }
+        button.submit-btn {
+            background: var(--cyan);
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .thread-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+        .thread-title { color: var(--amber); font-size: 16px; font-weight: bold; margin-bottom: 8px; }
+        .post-meta { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+        .post-body { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+        .badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+        .badge-op { background: rgba(56, 189, 248, 0.2); color: var(--cyan); }
+        .pow-indicator { font-size: 11px; color: var(--green); margin-top: 6px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>[SOVEREIGN MESH] DECENTRALIZED OVERLAY</h1>
+            <div class="meta-strip" id="node-info">Loading node identity...</div>
+        </div>
+        <div id="status-badge" style="font-size: 12px; color: var(--green);">● OVERLAY LISTENER ACTIVE</div>
+    </header>
+
+    <div class="boards-nav" id="boards-list"></div>
+
+    <div class="form-box">
+        <div style="font-weight: bold; margin-bottom: 12px; color: var(--cyan);">CREATE NEW P2P THREAD</div>
+        <input type="text" id="post-title" placeholder="Thread Subject / Title (optional)">
+        <textarea id="post-content" rows="4" placeholder="Enter message text... (Argon2id micro-PoW will be mined upon submission)"></textarea>
+        <button class="submit-btn" onclick="submitPost()">MINE POW &amp; PUBLISH OVERLAY POST</button>
+        <div id="mining-status" class="pow-indicator" style="display:none;">Mining Argon2id Proof-of-Work (anti-spam)...</div>
+    </div>
+
+    <div id="threads-container"></div>
+
+    <script>
+        let currentBoard = 'g';
+
+        async function loadNodeInfo() {
+            try {
+                const res = await fetch('/api/node/info');
+                const data = await res.json();
+                document.getElementById('node-info').innerHTML = 
+                    `Node Address: <span style="color:var(--cyan)">${data.address}</span> | P2P Port: ${data.p2p_port} | Peers: ${data.active_peers} | PoW Target: ${data.difficulty}`;
+            } catch(e) {}
+        }
+
+        async function loadBoards() {
+            try {
+                const res = await fetch('/api/boards');
+                const boards = await res.json();
+                const container = document.getElementById('boards-list');
+                container.innerHTML = boards.map(b => 
+                    `<button class="board-btn ${b.slug === currentBoard ? 'active' : ''}" onclick="selectBoard('${b.slug}')">/${b.slug}/ - ${b.title}</button>`
+                ).join('');
+            } catch(e) {}
+        }
+
+        function selectBoard(slug) {
+            currentBoard = slug;
+            loadBoards();
+            loadThreads();
+        }
+
+        async function loadThreads() {
+            try {
+                const res = await fetch('/api/threads?board=' + currentBoard);
+                const threads = await res.json();
+                const container = document.getElementById('threads-container');
+                if (!threads || threads.length === 0) {
+                    container.innerHTML = '<div style="color:var(--muted)">No threads on /' + currentBoard + '/ yet. Create the first one above!</div>';
+                    return;
+                }
+
+                let html = '';
+                for (const t of threads) {
+                    const postRes = await fetch('/api/posts?thread_id=' + t.id);
+                    const posts = await postRes.json();
+                    html += `
+                        <div class="thread-card">
+                            <div class="thread-title">/${t.board_slug}/ - ${t.title}</div>
+                            ${(posts || []).map(p => `
+                                <div style="margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--border);">
+                                    <div class="post-meta">
+                                        ${p.is_op ? '<span class="badge badge-op">OP</span>' : ''}
+                                        Anonymous <span style="color:var(--cyan)">${p.author_address}</span>
+                                        • ${new Date(p.timestamp * 1000).toLocaleString()}
+                                        • PoW: ${p.pow_hash.substring(0, 10)}... (Nonce ${p.nonce})
+                                    </div>
+                                    <div class="post-body">${p.content}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+                container.innerHTML = html;
+            } catch(e) {}
+        }
+
+        async function submitPost() {
+            const title = document.getElementById('post-title').value;
+            const content = document.getElementById('post-content').value;
+            if (!content.trim()) return alert('Message content required');
+
+            document.getElementById('mining-status').style.display = 'block';
+
+            try {
+                const res = await fetch('/api/posts', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        board_slug: currentBoard,
+                        title: title,
+                        content: content
+                    })
+                });
+                const result = await res.json();
+                document.getElementById('mining-status').style.display = 'none';
+                document.getElementById('post-title').value = '';
+                document.getElementById('post-content').value = '';
+                loadThreads();
+            } catch(e) {
+                alert('Publish error: ' + e);
+                document.getElementById('mining-status').style.display = 'none';
+            }
+        }
+
+        loadNodeInfo();
+        loadBoards();
+        loadThreads();
+        setInterval(loadThreads, 8000);
+    </script>
+</body>
+</html>

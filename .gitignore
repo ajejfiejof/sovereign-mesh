@@ -1,0 +1,6 @@
+sovereign-mesh
+*.db
+*.db-shm
+*.db-wal
+identity.json
+.sovereign-mesh/
