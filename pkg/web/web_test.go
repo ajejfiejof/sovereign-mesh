@@ -18,6 +18,22 @@ import (
 	"github.com/ajejfiejof/sovereign-mesh/pkg/storage"
 )
 
+func browserClient() *http.Client {
+	return &http.Client{Timeout: 5 * time.Second}
+}
+
+func doBrowserRequest(method, url string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	return browserClient().Do(req)
+}
+
 func TestWebServerEndpoints(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "web_test.db")
@@ -29,13 +45,13 @@ func TestWebServerEndpoints(t *testing.T) {
 	}
 	defer store.Close()
 
-	node := p2p.NewNode(id, store, 9211, 1) // PoW difficulty 1 for fast test
+	node := p2p.NewNode(id, store, 9221, 1) // PoW difficulty 1 for fast test
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	_ = node.Start(ctx)
 
-	webPort := 9212
+	webPort := 9222
 	server := NewServer(node, store, id, webPort)
 	_ = server.Start(ctx)
 
@@ -43,8 +59,8 @@ func TestWebServerEndpoints(t *testing.T) {
 
 	baseURL := fmt.Sprintf("http://%s", net.JoinHostPort("127.0.0.1", strconv.Itoa(webPort)))
 
-	// 1. Test GET / (HTML Index)
-	indexResp, err := http.Get(baseURL + "/")
+	// 1. Test GET / (HTML Index with Canary Honeypot Link)
+	indexResp, err := doBrowserRequest("GET", baseURL+"/", nil)
 	if err != nil {
 		t.Fatalf("GET / failed: %v", err)
 	}
@@ -56,9 +72,12 @@ func TestWebServerEndpoints(t *testing.T) {
 	if !bytes.Contains(bodyBytes, []byte("SOVEREIGN MESH")) {
 		t.Error("Index HTML does not contain SOVEREIGN MESH title")
 	}
+	if !bytes.Contains(bodyBytes, []byte("/api/canary/")) {
+		t.Error("Index HTML must inject hidden honeypot canary link")
+	}
 
 	// 2. Test GET /api/boards
-	resp, err := http.Get(baseURL + "/api/boards")
+	resp, err := doBrowserRequest("GET", baseURL+"/api/boards", nil)
 	if err != nil {
 		t.Fatalf("GET /api/boards failed: %v", err)
 	}
@@ -74,7 +93,7 @@ func TestWebServerEndpoints(t *testing.T) {
 	}
 
 	// 3. Test GET /api/node/info
-	infoResp, err := http.Get(baseURL + "/api/node/info")
+	infoResp, err := doBrowserRequest("GET", baseURL+"/api/node/info", nil)
 	if err != nil {
 		t.Fatalf("GET /api/node/info failed: %v", err)
 	}
@@ -91,7 +110,7 @@ func TestWebServerEndpoints(t *testing.T) {
 		"content":    "Testing automatic node-side mining and storage.",
 	})
 
-	postResp, err := http.Post(baseURL+"/api/posts", "application/json", bytes.NewReader(postBody))
+	postResp, err := doBrowserRequest("POST", baseURL+"/api/posts", bytes.NewReader(postBody))
 	if err != nil {
 		t.Fatalf("POST /api/posts failed: %v", err)
 	}
@@ -113,7 +132,7 @@ func TestWebServerEndpoints(t *testing.T) {
 	threadID := int64(postResult["thread_id"].(float64))
 
 	// 5. Test GET /api/threads?board=g
-	threadsResp, err := http.Get(baseURL + "/api/threads?board=g")
+	threadsResp, err := doBrowserRequest("GET", baseURL+"/api/threads?board=g", nil)
 	if err != nil {
 		t.Fatalf("GET /api/threads failed: %v", err)
 	}
@@ -123,8 +142,8 @@ func TestWebServerEndpoints(t *testing.T) {
 		t.Errorf("Failed to decode threads or empty: %v", err)
 	}
 
-	// 6. Test GET /api/posts?thread_id=...
-	getPostsResp, err := http.Get(fmt.Sprintf("%s/api/posts?thread_id=%d", baseURL, threadID))
+	// 6. Test GET /api/posts?thread_id=... (verifies zero-width watermarking)
+	getPostsResp, err := doBrowserRequest("GET", fmt.Sprintf("%s/api/posts?thread_id=%d", baseURL, threadID), nil)
 	if err != nil {
 		t.Fatalf("GET /api/posts failed: %v", err)
 	}
@@ -135,7 +154,7 @@ func TestWebServerEndpoints(t *testing.T) {
 	}
 
 	// 7. Test GET /api/peers
-	peersResp, err := http.Get(baseURL + "/api/peers")
+	peersResp, err := doBrowserRequest("GET", baseURL+"/api/peers", nil)
 	if err != nil {
 		t.Fatalf("GET /api/peers failed: %v", err)
 	}
@@ -144,22 +163,32 @@ func TestWebServerEndpoints(t *testing.T) {
 		t.Errorf("Expected 200 for peers, got %d", peersResp.StatusCode)
 	}
 
-	// 8. Test POST /api/peers/connect (Valid and Invalid)
+	// 8. Test POST /api/peers/connect
 	connPayload, _ := json.Marshal(map[string]string{"endpoint": "127.0.0.1:9299"})
-	connResp, err := http.Post(baseURL+"/api/peers/connect", "application/json", bytes.NewReader(connPayload))
+	connResp, err := doBrowserRequest("POST", baseURL+"/api/peers/connect", bytes.NewReader(connPayload))
 	if err != nil {
 		t.Fatalf("POST /api/peers/connect failed: %v", err)
 	}
 	defer connResp.Body.Close()
-	// Connection will fail since no peer is at 9299, expecting 500 error response
 	if connResp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("Expected status 500 for unreachable peer, got %d", connResp.StatusCode)
 	}
 
 	// 9. Error cases: empty content
 	badPostBody, _ := json.Marshal(map[string]interface{}{"content": ""})
-	badResp, err := http.Post(baseURL+"/api/posts", "application/json", bytes.NewReader(badPostBody))
+	badResp, err := doBrowserRequest("POST", baseURL+"/api/posts", bytes.NewReader(badPostBody))
 	if err != nil || badResp.StatusCode != http.StatusBadRequest {
 		t.Errorf("Expected 400 for empty content, got %d", badResp.StatusCode)
+	}
+
+	// 10. Anti-Scrape Verification: Honeypot Canary Trap Hit
+	canaryURL := baseURL + server.shield.GetRandomCanaryPath()
+	canaryResp, err := doBrowserRequest("GET", canaryURL, nil)
+	if err != nil {
+		t.Fatalf("Canary hit request failed: %v", err)
+	}
+	canaryResp.Body.Close()
+	if canaryResp.StatusCode != http.StatusNotFound && canaryResp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("Expected honeypot trap to trigger, got status %d", canaryResp.StatusCode)
 	}
 }

@@ -204,7 +204,14 @@ func runPost(args []string) {
 	fmt.Printf("Publishing to /%s/ via %s (Mining PoW locally)...\n", *board, apiURL)
 	start := time.Now()
 
-	resp, err := http.Post(apiURL, "application/json", bytes.NewReader(payload))
+	req, err := http.NewRequest("POST", apiURL, bytes.NewReader(payload))
+	if err != nil {
+		log.Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "SovereignMesh-CLI/"+Version)
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Fatalf("Failed to publish post: %v", err)
 	}
@@ -230,7 +237,13 @@ func runPeers(args []string) {
 
 	apiURL := fmt.Sprintf("http://%s/api/node/info", net.JoinHostPort("127.0.0.1", strconv.Itoa(*webPort)))
 
-	resp, err := http.Get(apiURL)
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		log.Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("User-Agent", "SovereignMesh-CLI/"+Version)
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Fatalf("Failed to query node info: %v", err)
 	}
