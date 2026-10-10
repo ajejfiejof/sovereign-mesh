@@ -37,6 +37,14 @@ Sovereign Mesh includes an active anti-scraping and crawler neutralization engin
 
 ---
 
+## Documentation
+
+- 📖 **[User & Operator Guide](docs/USER_GUIDE.md):** Complete guide to identity management, node deployment, multi-node peering, and CLI posting.
+- 📡 **[REST API Reference](docs/API_REFERENCE.md):** Comprehensive endpoint reference with curl examples, headers, and request/response payloads.
+- ⚙️ **[Wire Protocol Specification](docs/PROTOCOL.md):** Low-level packet framing, binary opcodes, mutual Ed25519 handshakes, and Argon2id parameters.
+
+---
+
 ## Architecture
 
 ```
