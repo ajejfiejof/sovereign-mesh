@@ -206,6 +206,16 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 			req.BoardSlug = "g"
 		}
 
+		// Zero-Tolerance Moderation & Anti-Hate Pre-Check
+		allowed, violation := s.node.Defederation.ValidatePost(req.Content, s.identity.Address, s.identity.PubKeyHex)
+		if !allowed {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error":  violation,
+				"policy": "Zero-tolerance anti-hate policy enforced",
+			})
+			return
+		}
+
 		powRes, err := crypto.Mine(req.Content, s.node.Difficulty)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "pow mining failed"})

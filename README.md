@@ -7,6 +7,12 @@
 
 ---
 
+## Mission Statement
+
+> **Sovereign Mesh exists to provide resilient, self-sovereign, and decentralized communication without corporate hyperscalers or surveillance gatekeepers, with a strict and uncompromising zero-tolerance policy against neo-Nazi, fascist, and violent extremist infiltration. We enforce total network isolation and automated defederation through cryptographic shunning, real-time symbol and lexical inspection, and community-subscribed blocklists. Open-source decentralization must never serve as a playground for hate.**
+
+---
+
 ## The Problem It Solves
 
 As debated on technical forums, modern internet communication suffers from structural centralisation:
@@ -39,6 +45,7 @@ Sovereign Mesh includes an active anti-scraping and crawler neutralization engin
 
 ## Documentation
 
+- 🛡️ **[Zero-Tolerance Moderation Architecture](docs/MODERATION_ARCHITECTURE.md):** 4-tier defederation engine, real-time symbol scanning, and taint-and-sever mechanics.
 - 📖 **[User & Operator Guide](docs/USER_GUIDE.md):** Complete guide to identity management, node deployment, multi-node peering, and CLI posting.
 - 📡 **[REST API Reference](docs/API_REFERENCE.md):** Comprehensive endpoint reference with curl examples, headers, and request/response payloads.
 - ⚙️ **[Wire Protocol Specification](docs/PROTOCOL.md):** Low-level packet framing, binary opcodes, mutual Ed25519 handshakes, and Argon2id parameters.

@@ -10,29 +10,32 @@ import (
 	"time"
 
 	"github.com/ajejfiejof/sovereign-mesh/pkg/crypto"
+	"github.com/ajejfiejof/sovereign-mesh/pkg/moderation"
 	"github.com/ajejfiejof/sovereign-mesh/pkg/storage"
 )
 
 type Node struct {
-	Identity   *crypto.Identity
-	Store      *storage.DB
-	Port       int
-	Difficulty int
-	peers      map[string]*Peer
-	peersMu    sync.RWMutex
-	seenPosts  map[string]bool
-	seenMu     sync.RWMutex
-	listener   net.Listener
+	Identity     *crypto.Identity
+	Store        *storage.DB
+	Defederation *moderation.DefederationManager
+	Port         int
+	Difficulty   int
+	peers        map[string]*Peer
+	peersMu      sync.RWMutex
+	seenPosts    map[string]bool
+	seenMu       sync.RWMutex
+	listener     net.Listener
 }
 
 func NewNode(id *crypto.Identity, store *storage.DB, port int, difficulty int) *Node {
 	return &Node{
-		Identity:   id,
-		Store:      store,
-		Port:       port,
-		Difficulty: difficulty,
-		peers:      make(map[string]*Peer),
-		seenPosts:  make(map[string]bool),
+		Identity:     id,
+		Store:        store,
+		Defederation: moderation.NewDefederationManager(),
+		Port:         port,
+		Difficulty:   difficulty,
+		peers:        make(map[string]*Peer),
+		seenPosts:    make(map[string]bool),
 	}
 }
 
@@ -193,6 +196,15 @@ func (n *Node) handleGossipPost(sender *Peer, payload []byte) {
 	}
 	n.seenPosts[postIDKey] = true
 	n.seenMu.Unlock()
+
+	// Zero-Tolerance Inbound Moderation & Defederation Check
+	allowed, violation := n.Defederation.ValidatePost(post.Content, post.AuthorAddress, post.AuthorPubKey)
+	if !allowed {
+		log.Printf("[P2P-Moderation] ZERO TOLERANCE: Dropping post and defederating peer %s (%s)", sender.Endpoint, violation)
+		n.removePeer(sender.Address)
+		sender.Close()
+		return
+	}
 
 	if !crypto.VerifySignature(post.AuthorPubKey, post.Signature, []byte(post.Content)) {
 		log.Printf("[P2P] Rejected gossip post: invalid signature from %s", post.AuthorAddress)
