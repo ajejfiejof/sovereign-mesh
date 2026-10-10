@@ -142,13 +142,15 @@ func runNode(args []string) {
 		log.Fatalf("Failed to start web server: %v", err)
 	}
 
-	fmt.Println("\n=======================================================")
+	fmt.Println()
+	fmt.Println("=======================================================")
 	fmt.Printf("  SOVEREIGN MESH OVERLAY NODE ACTIVE (%s)\n", Version)
 	fmt.Printf("  Node Address:   %s\n", id.Address)
 	fmt.Printf("  P2P Listener:   0.0.0.0:%d\n", *p2pPort)
 	fmt.Printf("  Web Portal:     http://127.0.0.1:%d\n", *webPort)
 	fmt.Printf("  PoW Difficulty: %d (Argon2id 32MB)\n", *difficulty)
-	fmt.Println("=======================================================\n")
+	fmt.Println("=======================================================")
+	fmt.Println()
 
 	<-ctx.Done()
 	time.Sleep(200 * time.Millisecond)

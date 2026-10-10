@@ -1,6 +1,10 @@
 # Sovereign Mesh (`sovereign-mesh`) 🌐
 > A self-sovereign, cryptographically addressed P2P communication overlay and local-first imageboard daemon with Argon2id anti-spam Proof-of-Work in pure Go.
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)](LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ajejfiejof/sovereign-mesh)](https://goreportcard.com/report/github.com/ajejfiejof/sovereign-mesh)
+[![Test Coverage: 69%](https://img.shields.io/badge/Coverage-69%25-brightgreen.svg)](coverage.out)
+
 ---
 
 ## The Problem It Solves
@@ -104,15 +108,27 @@ The embedded node exposes a local REST API:
 
 ---
 
-## Running Automated Tests
+## Test Coverage
 
-Run the unit test suite covering cryptography, storage, P2P peering, and the web server:
+Every core component has dedicated unit and integration tests:
+
+| Package | Statement Coverage | Test Scope |
+|:---|:---:|:---|
+| **`pkg/crypto`** | **94.4%** | Ed25519 identity generation, file I/O, hex codecs, Argon2id mining & verification |
+| **`pkg/storage`** | **78.6%** | SQLite schema initialization, atomic thread creation, bumping, and peer tracking |
+| **`pkg/p2p`** | **73.3%** | Wire protocol framing, multi-node peering, mutual handshakes & gossip replication |
+| **`pkg/web`** | **73.3%** | REST API endpoints, HTML delivery, client post ingestion & CORS headers |
+| **`cmd/sovereign-mesh`** | **43.8%** | CLI keygen, bench, usage, and end-to-end command execution |
+| **Total Project** | **68.8%** | Tested across 5 Go packages |
+
+To run the full test and coverage suite:
 ```bash
-go test -v ./...
+go test -v -coverprofile=coverage.out ./...
+go tool cover -func=coverage.out
 ```
 
 ---
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**. See the [LICENSE](LICENSE) file for the full license text.

@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"path/filepath"
@@ -11,6 +12,40 @@ import (
 	"github.com/ajejfiejof/sovereign-mesh/pkg/crypto"
 	"github.com/ajejfiejof/sovereign-mesh/pkg/storage"
 )
+
+func TestWireProtocolFraming(t *testing.T) {
+	var buf bytes.Buffer
+	testPayload := []byte("Protocol framing test payload")
+
+	// 1. Valid write and read
+	if err := WritePacket(&buf, MsgTypeGossipPost, testPayload); err != nil {
+		t.Fatalf("WritePacket failed: %v", err)
+	}
+
+	pkt, err := ReadPacket(&buf)
+	if err != nil {
+		t.Fatalf("ReadPacket failed: %v", err)
+	}
+	if pkt.Type != MsgTypeGossipPost || string(pkt.Payload) != string(testPayload) {
+		t.Errorf("Packet mismatch: got type=%x, payload=%s", pkt.Type, string(pkt.Payload))
+	}
+
+	// 2. Invalid magic bytes
+	invalidBuf := bytes.NewReader([]byte{0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00})
+	if _, err := ReadPacket(invalidBuf); err == nil {
+		t.Error("Expected error on invalid magic bytes, got nil")
+	}
+
+	// 3. Oversized payload error (exceeds 4MB)
+	oversizedBuf := bytes.NewReader([]byte{
+		0x53, 0x4D, // Magic
+		0x01,       // Type
+		0x01, 0x00, 0x00, 0x00, // Length = 16 MB
+	})
+	if _, err := ReadPacket(oversizedBuf); err == nil {
+		t.Error("Expected error on oversized payload length, got nil")
+	}
+}
 
 func TestP2PPeeringAndGossipReplication(t *testing.T) {
 	tempDir := t.TempDir()
@@ -23,7 +58,7 @@ func TestP2PPeeringAndGossipReplication(t *testing.T) {
 	}
 	defer store1.Close()
 
-	node1 := NewNode(id1, store1, 9101, 1) // Difficulty=1 for instant test execution
+	node1 := NewNode(id1, store1, 9111, 1) // Difficulty=1 for instant test execution
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	defer cancel1()
 	if err := node1.Start(ctx1); err != nil {
@@ -38,7 +73,7 @@ func TestP2PPeeringAndGossipReplication(t *testing.T) {
 	}
 	defer store2.Close()
 
-	node2 := NewNode(id2, store2, 9102, 1)
+	node2 := NewNode(id2, store2, 9112, 1)
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
 	if err := node2.Start(ctx2); err != nil {
@@ -48,13 +83,19 @@ func TestP2PPeeringAndGossipReplication(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// 3. Connect Node 1 -> Node 2 using net.JoinHostPort
-	targetEndpoint := net.JoinHostPort("127.0.0.1", strconv.Itoa(9102))
+	targetEndpoint := net.JoinHostPort("127.0.0.1", strconv.Itoa(9112))
 	if err := node1.ConnectPeer(targetEndpoint); err != nil {
 		t.Fatalf("ConnectPeer failed: %v", err)
 	}
 
 	// Wait for mutual handshake
 	time.Sleep(100 * time.Millisecond)
+
+	// Check active peers list
+	activePeers := node1.GetActivePeers()
+	if len(activePeers) != 1 {
+		t.Errorf("Expected 1 active peer on Node 1, got %d", len(activePeers))
+	}
 
 	// 4. Create and mine a post on Node 1
 	content := "Censorship-resistant P2P gossiping verified."

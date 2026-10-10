@@ -70,7 +70,25 @@ func TestStorageLifecycle(t *testing.T) {
 		t.Errorf("Reply post ID should be greater than OP post ID")
 	}
 
-	// 4. Retrieve Posts
+	// 4. Retrieve Threads
+	threads, err := store.GetThreads("g", 10)
+	if err != nil {
+		t.Fatalf("GetThreads failed: %v", err)
+	}
+	if len(threads) != 1 {
+		t.Fatalf("Expected 1 thread on /g/, got %d", len(threads))
+	}
+	if threads[0].PostCount != 2 {
+		t.Errorf("Expected post count 2, got %d", threads[0].PostCount)
+	}
+
+	// Empty board threads
+	emptyThreads, err := store.GetThreads("emptyboard", 10)
+	if err != nil || len(emptyThreads) != 0 {
+		t.Errorf("Expected 0 threads on empty board, got %d (err=%v)", len(emptyThreads), err)
+	}
+
+	// 5. Retrieve Posts
 	posts, err := store.GetPosts(tID)
 	if err != nil {
 		t.Fatalf("GetPosts failed: %v", err)
@@ -82,12 +100,20 @@ func TestStorageLifecycle(t *testing.T) {
 		t.Errorf("Post OP flags incorrect: posts[0].IsOP=%v, posts[1].IsOP=%v", posts[0].IsOP, posts[1].IsOP)
 	}
 
-	// 5. Test Peer Tracking
+	// 6. Test Peer Tracking
 	if err := store.UpsertPeer("mesh:peernode1", "127.0.0.1:9001", true); err != nil {
 		t.Fatalf("UpsertPeer failed: %v", err)
 	}
+	// Upsert again to test ON CONFLICT branch
+	if err := store.UpsertPeer("mesh:peernode1", "127.0.0.1:9002", false); err != nil {
+		t.Fatalf("UpsertPeer update failed: %v", err)
+	}
+
 	peers, err := store.GetPeers()
 	if err != nil || len(peers) != 1 {
 		t.Fatalf("Expected 1 peer, got %d (err=%v)", len(peers), err)
+	}
+	if peers[0].Endpoint != "127.0.0.1:9002" || peers[0].Connected {
+		t.Errorf("Peer update failed to persist: %+v", peers[0])
 	}
 }
