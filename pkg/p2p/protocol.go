@@ -18,6 +18,7 @@ const (
 	MsgTypeGossipPost   byte = 0x03
 	MsgTypePing         byte = 0x04
 	MsgTypePong         byte = 0x05
+	MsgTypePeerExchange byte = 0x06 // PEX message for peer discovery
 )
 
 type HandshakeMessage struct {
@@ -26,6 +27,10 @@ type HandshakeMessage struct {
 	Timestamp int64  `json:"timestamp"`
 	Nonce     string `json:"nonce"`
 	Signature string `json:"signature"`
+}
+
+type PeerExchangeMessage struct {
+	Endpoints []string `json:"endpoints"`
 }
 
 type Packet struct {

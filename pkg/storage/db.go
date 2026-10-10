@@ -150,12 +150,10 @@ func (s *DB) CreatePost(p *Post) (postID int64, threadID int64, err error) {
 	}
 	defer tx.Rollback()
 
-	// If ThreadRef is empty but ThreadID is given, resolve ThreadRef from existing thread
 	if p.ThreadRef == "" && p.ThreadID != 0 {
 		_ = tx.QueryRow(`SELECT thread_ref FROM threads WHERE id = ?`, p.ThreadID).Scan(&p.ThreadRef)
 	}
 
-	// If ThreadRef is still empty, derive from PoWHash or Signature
 	if p.ThreadRef == "" {
 		if p.PoWHash != "" {
 			p.ThreadRef = p.PoWHash
@@ -167,7 +165,6 @@ func (s *DB) CreatePost(p *Post) (postID int64, threadID int64, err error) {
 	var existingThreadID int64
 	err = tx.QueryRow(`SELECT id FROM threads WHERE thread_ref = ?`, p.ThreadRef).Scan(&existingThreadID)
 	if err == sql.ErrNoRows {
-		// Thread does not exist yet: Create new Thread
 		title := p.Title
 		if title == "" {
 			title = "Untitled Discussion"
@@ -189,7 +186,6 @@ func (s *DB) CreatePost(p *Post) (postID int64, threadID int64, err error) {
 	} else if err != nil {
 		return 0, 0, fmt.Errorf("failed to check existing thread: %w", err)
 	} else {
-		// Existing thread: Bump post count and timestamp
 		p.ThreadID = existingThreadID
 		p.IsOP = false
 		_, err := tx.Exec(`
@@ -285,6 +281,29 @@ func (s *DB) GetPosts(threadID int64) ([]Post, error) {
 		posts = append(posts, p)
 	}
 	return posts, nil
+}
+
+// PruneThreads keeps only the top 'maxKeep' most recently updated threads on a board,
+// automatically purging older threads and their posts to prevent disk storage bloat.
+func (s *DB) PruneThreads(boardSlug string, maxKeep int) (int64, error) {
+	if maxKeep <= 0 {
+		maxKeep = 50
+	}
+
+	res, err := s.db.Exec(`
+		DELETE FROM threads 
+		WHERE board_slug = ? AND id NOT IN (
+			SELECT id FROM threads 
+			WHERE board_slug = ? 
+			ORDER BY updated_at DESC 
+			LIMIT ?
+		)
+	`, boardSlug, boardSlug, maxKeep)
+	if err != nil {
+		return 0, err
+	}
+
+	return res.RowsAffected()
 }
 
 func (s *DB) UpsertPeer(address, endpoint string, connected bool) error {

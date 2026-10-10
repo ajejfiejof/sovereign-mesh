@@ -52,6 +52,7 @@ func (n *Node) Start(ctx context.Context) error {
 
 	go n.acceptLoop()
 	go n.keepaliveLoop(ctx)
+	go n.maintenanceLoop(ctx)
 
 	return nil
 }
@@ -106,6 +107,27 @@ func (n *Node) sendHandshake(p *Peer) {
 	}
 }
 
+func (n *Node) sendPeerExchange(p *Peer) {
+	records, err := n.Store.GetPeers()
+	if err != nil || len(records) == 0 {
+		return
+	}
+
+	var endpoints []string
+	for _, r := range records {
+		if r.Endpoint != "" && r.Endpoint != p.Endpoint {
+			endpoints = append(endpoints, r.Endpoint)
+		}
+	}
+
+	if len(endpoints) > 0 {
+		payload, err := EncodeJSON(PeerExchangeMessage{Endpoints: endpoints})
+		if err == nil {
+			p.Send(&Packet{Type: MsgTypePeerExchange, Payload: payload})
+		}
+	}
+}
+
 func (n *Node) handlePacket(p *Peer, pkt *Packet) {
 	switch pkt.Type {
 	case MsgTypeHandshake:
@@ -115,7 +137,6 @@ func (n *Node) handlePacket(p *Peer, pkt *Packet) {
 			return
 		}
 
-		// Verify handshake signature
 		msgBytes := []byte(fmt.Sprintf("%s:%d", hs.Address, hs.Timestamp))
 		if !crypto.VerifySignature(hs.PubKey, hs.Signature, msgBytes) {
 			log.Printf("[P2P] Rejected invalid handshake signature from %s", p.Endpoint)
@@ -131,8 +152,20 @@ func (n *Node) handlePacket(p *Peer, pkt *Packet) {
 		ackPayload, _ := EncodeJSON(map[string]string{"status": "ok", "address": n.Identity.Address})
 		p.Send(&Packet{Type: MsgTypeHandshakeAck, Payload: ackPayload})
 
+		// Send PEX peer exchange list
+		n.sendPeerExchange(p)
+
 	case MsgTypeHandshakeAck:
 		log.Printf("[P2P] Mutual handshake established with %s", p.Endpoint)
+		n.sendPeerExchange(p)
+
+	case MsgTypePeerExchange:
+		var pex PeerExchangeMessage
+		if err := DecodeJSON(pkt.Payload, &pex); err == nil {
+			for _, ep := range pex.Endpoints {
+				_ = n.Store.UpsertPeer("discovered:"+ep, ep, false)
+			}
+		}
 
 	case MsgTypeGossipPost:
 		n.handleGossipPost(p, pkt.Payload)
@@ -161,19 +194,16 @@ func (n *Node) handleGossipPost(sender *Peer, payload []byte) {
 	n.seenPosts[postIDKey] = true
 	n.seenMu.Unlock()
 
-	// 1. Verify Ed25519 signature on content
 	if !crypto.VerifySignature(post.AuthorPubKey, post.Signature, []byte(post.Content)) {
 		log.Printf("[P2P] Rejected gossip post: invalid signature from %s", post.AuthorAddress)
 		return
 	}
 
-	// 2. Verify Proof-of-Work to ensure anti-spam cost was paid
 	if !crypto.VerifyPoW(post.Content, post.Nonce, n.Difficulty) {
 		log.Printf("[P2P] Rejected gossip post: insufficient PoW from %s", post.AuthorAddress)
 		return
 	}
 
-	// 3. Ingest into local SQLite database
 	_, _, err := n.Store.CreatePost(&post)
 	if err != nil {
 		log.Printf("[P2P] Failed to store gossip post locally: %v", err)
@@ -181,8 +211,6 @@ func (n *Node) handleGossipPost(sender *Peer, payload []byte) {
 	}
 
 	log.Printf("[P2P] Ingested verified post from %s on board /%s/ (Thread %d)", post.AuthorAddress, post.BoardSlug, post.ThreadID)
-
-	// 4. Re-broadcast to all other connected peers (Gossip broadcast)
 	n.BroadcastPost(&post, sender.Address)
 }
 
@@ -233,6 +261,16 @@ func (n *Node) GetActivePeers() []string {
 	return list
 }
 
+func (n *Node) PruneAllBoards(maxKeep int) {
+	boards, err := n.Store.GetBoards()
+	if err != nil {
+		return
+	}
+	for _, b := range boards {
+		_, _ = n.Store.PruneThreads(b.Slug, maxKeep)
+	}
+}
+
 func (n *Node) keepaliveLoop(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -248,6 +286,20 @@ func (n *Node) keepaliveLoop(ctx context.Context) {
 				p.Send(pingPkt)
 			}
 			n.peersMu.RUnlock()
+		}
+	}
+}
+
+func (n *Node) maintenanceLoop(ctx context.Context) {
+	ticker := time.NewTicker(15 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n.PruneAllBoards(50)
 		}
 	}
 }

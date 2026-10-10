@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -100,11 +101,46 @@ func TestStorageLifecycle(t *testing.T) {
 		t.Errorf("Post OP flags incorrect: posts[0].IsOP=%v, posts[1].IsOP=%v", posts[0].IsOP, posts[1].IsOP)
 	}
 
-	// 6. Test Peer Tracking
+	// 6. Test Thread Pruning (Ephemeral 4chan Model)
+	// Create 4 more threads on /g/ (total 5) with unique PoWHash
+	for i := 1; i <= 4; i++ {
+		_, _, err := store.CreatePost(&Post{
+			BoardSlug:     "g",
+			Title:         fmt.Sprintf("Extra Thread %d", i),
+			AuthorAddress: "mesh:author",
+			Content:       "Post body",
+			PoWHash:       fmt.Sprintf("pow_extra_%d", i),
+			Signature:     "sig",
+			Timestamp:     time.Now().Unix(),
+		})
+		if err != nil {
+			t.Fatalf("Failed to create extra thread %d: %v", i, err)
+		}
+	}
+
+	threadsBefore, _ := store.GetThreads("g", 20)
+	if len(threadsBefore) != 5 {
+		t.Errorf("Expected 5 threads before pruning, got %d", len(threadsBefore))
+	}
+
+	// Prune, keeping only the top 2
+	prunedCount, err := store.PruneThreads("g", 2)
+	if err != nil {
+		t.Fatalf("PruneThreads failed: %v", err)
+	}
+	if prunedCount != 3 {
+		t.Errorf("Expected 3 threads pruned, got %d", prunedCount)
+	}
+
+	threadsAfter, _ := store.GetThreads("g", 20)
+	if len(threadsAfter) != 2 {
+		t.Errorf("Expected 2 threads remaining after pruning, got %d", len(threadsAfter))
+	}
+
+	// 7. Test Peer Tracking
 	if err := store.UpsertPeer("mesh:peernode1", "127.0.0.1:9001", true); err != nil {
 		t.Fatalf("UpsertPeer failed: %v", err)
 	}
-	// Upsert again to test ON CONFLICT branch
 	if err := store.UpsertPeer("mesh:peernode1", "127.0.0.1:9002", false); err != nil {
 		t.Fatalf("UpsertPeer update failed: %v", err)
 	}

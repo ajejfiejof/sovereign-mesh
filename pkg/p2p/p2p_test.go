@@ -88,7 +88,7 @@ func TestP2PPeeringAndGossipReplication(t *testing.T) {
 		t.Fatalf("ConnectPeer failed: %v", err)
 	}
 
-	// Wait for mutual handshake
+	// Wait for mutual handshake & PEX
 	time.Sleep(100 * time.Millisecond)
 
 	// Check active peers list
@@ -96,6 +96,9 @@ func TestP2PPeeringAndGossipReplication(t *testing.T) {
 	if len(activePeers) != 1 {
 		t.Errorf("Expected 1 active peer on Node 1, got %d", len(activePeers))
 	}
+
+	// Test PruneAllBoards maintenance invocation
+	node1.PruneAllBoards(10)
 
 	// 4. Create and mine a post on Node 1
 	content := "Censorship-resistant P2P gossiping verified."

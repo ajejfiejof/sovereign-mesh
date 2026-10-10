@@ -1,15 +1,11 @@
 package main
 
 import (
-	"context"
+	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
-
-	"github.com/ajejfiejof/sovereign-mesh/pkg/crypto"
-	"github.com/ajejfiejof/sovereign-mesh/pkg/p2p"
-	"github.com/ajejfiejof/sovereign-mesh/pkg/storage"
-	"github.com/ajejfiejof/sovereign-mesh/pkg/web"
 )
 
 func TestCLICommands(t *testing.T) {
@@ -31,33 +27,41 @@ func TestCLICommands(t *testing.T) {
 	// 4. Test usage output
 	printUsage()
 
-	// 5. Test post and peers against a running test node
-	id, _ := crypto.GenerateIdentity()
-	store, err := storage.Open(filepath.Join(tempDir, "cli_test.db"))
-	if err != nil {
-		t.Fatalf("Storage open failed: %v", err)
-	}
-	defer store.Close()
+	// 5. Test runNode in background with SIGTERM shutdown
+	nodeDone := make(chan struct{})
+	go func() {
+		defer close(nodeDone)
+		runNode([]string{
+			"-p2p", "9312",
+			"-web", "9313",
+			"-diff", "1",
+			"-data", tempDir,
+		})
+	}()
 
-	node := p2p.NewNode(id, store, 9301, 1)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	_ = node.Start(ctx)
+	time.Sleep(200 * time.Millisecond)
 
-	webPort := 9302
-	webServer := web.NewServer(node, store, id, webPort)
-	_ = webServer.Start(ctx)
-
-	time.Sleep(100 * time.Millisecond)
-
-	// Run CLI post command
+	// Test runPost against the running node
 	runPost([]string{
-		"-port", "9302",
+		"-port", "9313",
 		"-board", "g",
 		"-title", "CLI Post Test",
 		"-content", "Posting directly through the CLI tool.",
 	})
 
-	// Run CLI peers command
-	runPeers([]string{"-port", "9302"})
+	// Test runPeers against the running node
+	runPeers([]string{"-port", "9313"})
+
+	// Trigger graceful shutdown of runNode via SIGTERM
+	proc, err := os.FindProcess(os.Getpid())
+	if err == nil {
+		_ = proc.Signal(syscall.SIGTERM)
+	}
+
+	select {
+	case <-nodeDone:
+		// Graceful exit confirmed
+	case <-time.After(3 * time.Second):
+		t.Fatal("runNode timed out waiting for graceful shutdown")
+	}
 }
