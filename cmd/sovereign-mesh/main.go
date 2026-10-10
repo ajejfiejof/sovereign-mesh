@@ -84,7 +84,7 @@ func runNode(args []string) {
 	difficulty := fs.Int("diff", 2, "Argon2id PoW difficulty (leading hex zeros)")
 	dataDir := fs.String("data", defaultDataDir(), "Data directory for database and keys")
 	bootstrapPeer := fs.String("peer", "", "Bootstrap peer endpoint to connect to (host:port)")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if err := os.MkdirAll(*dataDir, 0700); err != nil {
 		log.Fatalf("Failed to create data directory: %v", err)
@@ -160,7 +160,7 @@ func runNode(args []string) {
 func runKeygen(args []string) {
 	fs := flag.NewFlagSet("keygen", flag.ExitOnError)
 	outFile := fs.String("out", "", "Output file path (default prints to stdout)")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	id, err := crypto.GenerateIdentity()
 	if err != nil {
@@ -186,7 +186,7 @@ func runPost(args []string) {
 	title := fs.String("title", "", "Thread title (optional)")
 	content := fs.String("content", "", "Message text content")
 	threadID := fs.Int64("thread", 0, "Thread ID to reply to (0 for new thread)")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if *content == "" {
 		log.Fatal("Error: -content is required")
@@ -233,7 +233,7 @@ func runPost(args []string) {
 func runPeers(args []string) {
 	fs := flag.NewFlagSet("peers", flag.ExitOnError)
 	webPort := fs.Int("port", 8080, "Web API port of running node")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	apiURL := fmt.Sprintf("http://%s/api/node/info", net.JoinHostPort("127.0.0.1", strconv.Itoa(*webPort)))
 
@@ -267,7 +267,7 @@ func runPeers(args []string) {
 
 func runBench(args []string) {
 	fs := flag.NewFlagSet("bench", flag.ExitOnError)
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	payload := "SovereignMesh:Benchmark:SamplePayload"
 	fmt.Println("Benchmarking Argon2id Memory-Hard Proof-of-Work (32 MB RAM per hash attempt):")

@@ -41,6 +41,10 @@ type Packet struct {
 // WritePacket writes a framed packet to the writer.
 // Format: [2 bytes Magic][1 byte Type][4 bytes Length][Payload]
 func WritePacket(w io.Writer, msgType byte, payload []byte) error {
+	if len(payload) > 4*1024*1024 {
+		return errors.New("payload length exceeds maximum limit of 4MB")
+	}
+
 	if _, err := w.Write(MagicHeader[:]); err != nil {
 		return err
 	}
@@ -48,6 +52,7 @@ func WritePacket(w io.Writer, msgType byte, payload []byte) error {
 		return err
 	}
 	lengthBuf := make([]byte, 4)
+	// #nosec G115 -- length is strictly bounded <= 4MB above
 	binary.BigEndian.PutUint32(lengthBuf, uint32(len(payload)))
 	if _, err := w.Write(lengthBuf); err != nil {
 		return err

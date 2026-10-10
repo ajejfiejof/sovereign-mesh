@@ -56,15 +56,18 @@ func (s *Server) Start(ctx context.Context) error {
 
 	addr := net.JoinHostPort("0.0.0.0", strconv.Itoa(s.port))
 	s.httpServer = &http.Server{
-		Addr:    addr,
-		Handler: s.securityMiddleware(corsMiddleware(mux)),
+		Addr:              addr,
+		Handler:           s.securityMiddleware(corsMiddleware(mux)),
+		ReadHeaderTimeout: 5 * time.Second, // G112: Mitigate Slowloris denial of service
 	}
 
 	log.Printf("[Web] Decentralized Imageboard Portal online at http://127.0.0.1:%d", s.port)
 
 	go func() {
 		<-ctx.Done()
-		_ = s.httpServer.Shutdown(context.Background())
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+		defer cancel()
+		_ = s.httpServer.Shutdown(shutdownCtx)
 	}()
 
 	go func() {
@@ -83,7 +86,9 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		if strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/node/info" {
 			allowed, tarpit, reason := s.shield.CheckRequest(r)
 			if tarpit {
-				log.Printf("[AntiScrape] Tarpitting detected scraper from %s (Path: %s, Reason: %s)", antiscrape.ExtractIP(r), r.URL.Path, reason)
+				cleanPath := strings.ReplaceAll(strings.ReplaceAll(r.URL.Path, "\n", ""), "\r", "")
+				// #nosec G706 -- Path sanitized above to prevent log injection
+				log.Printf("[AntiScrape] Tarpitting detected scraper from %s (Path: %s, Reason: %s)", antiscrape.ExtractIP(r), cleanPath, reason)
 				s.shield.TarpitResponse(w)
 				return
 			}

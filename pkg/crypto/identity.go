@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 // Identity represents a self-sovereign cryptographic persona.
@@ -98,7 +99,9 @@ func (id *Identity) SaveToFile(filePath string) error {
 
 // LoadFromFile loads an identity JSON from disk.
 func LoadFromFile(filePath string) (*Identity, error) {
-	data, err := os.ReadFile(filePath)
+	cleanPath := filepath.Clean(filePath)
+	// #nosec G304 -- User-supplied key file path intentionally read
+	data, err := os.ReadFile(cleanPath)
 	if err != nil {
 		return nil, err
 	}

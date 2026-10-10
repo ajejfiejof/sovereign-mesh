@@ -136,7 +136,9 @@ func (s *DB) initSchema() error {
 	}
 
 	for _, b := range defaultBoards {
-		s.db.Exec(`INSERT OR IGNORE INTO boards (slug, title, description) VALUES (?, ?, ?)`, b.Slug, b.Title, b.Description)
+		if _, err := s.db.Exec(`INSERT OR IGNORE INTO boards (slug, title, description) VALUES (?, ?, ?)`, b.Slug, b.Title, b.Description); err != nil {
+			return fmt.Errorf("failed to insert default board %s: %w", b.Slug, err)
+		}
 	}
 
 	return nil
